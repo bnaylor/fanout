@@ -1,6 +1,7 @@
 package worker
 
 import (
+    "context"
     "fmt"
     "math/rand"
     "time"
@@ -19,14 +20,19 @@ func New(myID, controllerID int) *Worker {
     }
 }
 
-func (w *Worker) Run(done <-chan struct{}, workItems <-chan string, results chan<- error) {
+func (w *Worker) Run(ctx context.Context, workItems <-chan string, results chan<- error) {
     for workItem := range workItems {
         fmt.Printf("Worker %d:%d got a workitem: %s\n", w.cid, w.id, workItem)
+
+        // Let's set a timeout on these that's lower than what some of them will do!
+        timeoutCtx, newCancel := context.WithTimeout(ctx, 5 * time.Second)
+        defer newCancel()
+
         select {
         case results <- w.work(workItem):
             fmt.Printf("Result sent from %d:%d\n", w.cid, w.id)
-        case <- done:
-            fmt.Printf("Worker %d:%d exiting on done signal\n", w.cid, w.id)
+        case <- timeoutCtx.Done():
+            fmt.Printf("Worker %d:%d exiting on done signal (%s)\n", w.cid, w.id, timeoutCtx.Err())
             return
         }
     }
